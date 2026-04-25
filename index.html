@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>舒尔特方块训练 - Loongg Edition</title>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --success-color: #2ecc71;
+            --error-color: #e74c3c;
+            --bg-color: #f5f7fa;
+            --text-color: #2c3e50;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            max-width: 90vw;
+        }
+
+        h1 { margin-bottom: 10px; }
+
+        .status-bar {
+            margin: 20px 0;
+            font-size: 1.2rem;
+            display: flex;
+            justify-content: space-around;
+            font-weight: bold;
+        }
+
+        #timer { color: var(--primary-color); min-width: 100px; }
+        #next-num { color: var(--success-color); }
+
+        /* 游戏网格布局 */
+        #game-board {
+            display: grid;
+            gap: 10px;
+            margin: 20px auto;
+            user-select: none; /* 防止频繁点击选中文字 */
+        }
+
+        .cell {
+            width: 60px;
+            height: 60px;
+            background: #fff;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .cell:hover { background: #f0f0f0; border-color: var(--primary-color); }
+        .cell:active { transform: scale(0.95); }
+
+        /* 状态反馈动画 */
+        .cell.correct {
+            background-color: var(--success-color) !important;
+            color: white;
+            border-color: var(--success-color);
+        }
+
+        .cell.wrong {
+            animation: shake 0.3s;
+            background-color: var(--error-color) !important;
+            color: white;
+            border-color: var(--error-color);
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        /* 控制区 */
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: var(--primary-color);
+            color: white;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover { opacity: 0.8; }
+        select { padding: 10px; border-radius: 5px; border: 1px solid #ddd; }
+
+        @media (max-width: 480px) {
+            .cell { width: 50px; height: 50px; font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>舒尔特方块</h1>
+    <p>注意力与视觉广度训练</p>
+
+    <div class="status-bar">
+        <div>目标: <span id="next-num">1</span></div>
+        <div>用时: <span id="timer">0.00s</span></div>
+    </div>
+
+    <div id="game-board"></div>
+
+    <div class="controls">
+        <select id="grid-size">
+            <option value="3">3 x 3 (入门)</option>
+            <option value="4">4 x 4 (进阶)</option>
+            <option value="5" selected>5 x 5 (标准)</option>
+            <option value="6">6 x 6 (困难)</option>
+            <option value="7">7 x 7 (大师)</option>
+        </select>
+        <button onclick="startGame()">开始挑战</button>
+    </div>
+</div>
+
+<script>
+    let currentNum = 1;
+    let timerInterval = null;
+    let startTime = null;
+    let isRunning = false;
+
+    const board = document.getElementById('game-board');
+    const timerDisplay = document.getElementById('timer');
+    const nextDisplay = document.getElementById('next-num');
+    const gridSizeSelect = document.getElementById('grid-size');
+
+    // 初始化游戏
+    function startGame() {
+        clearInterval(timerInterval);
+        const size = parseInt(gridSizeSelect.value);
+        const totalCells = size * size;
+        
+        // 重置数据
+        currentNum = 1;
+        isRunning = true;
+        nextDisplay.textContent = currentNum;
+        timerDisplay.textContent = "0.00s";
+        
+        // 生成随机数字数组
+        const nums = Array.from({length: totalCells}, (_, i) => i + 1);
+        shuffle(nums);
+
+        // 构建网格
+        board.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+        board.innerHTML = '';
+        
+        nums.forEach(num => {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.textContent = num;
+            cell.onclick = () => handleCellClick(num, cell);
+            board.appendChild(cell);
+        });
+
+        // 启动计时
+        startTime = Date.now();
+        timerInterval = setInterval(updateTimer, 10);
+    }
+
+    // 处理点击
+    function handleCellClick(num, element) {
+        if (!isRunning) return;
+
+        if (num === currentNum) {
+            // 点对了
+            element.classList.add('correct');
+            // 如果是最后一个数字
+            if (currentNum === parseInt(gridSizeSelect.value)**2) {
+                endGame();
+            } else {
+                currentNum++;
+                nextDisplay.textContent = currentNum;
+            }
+        } else {
+            // 点错了
+            element.classList.add('wrong');
+            setTimeout(() => element.classList.remove('wrong'), 300);
+        }
+    }
+
+    // 洗牌算法 (Fisher-Yates)
+    function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    // 更新计时器
+    function updateTimer() {
+        const elapsed = (Date.now() - startTime) / 1000;
+        timerDisplay.textContent = elapsed.toFixed(2) + "s";
+    }
+
+    // 结束游戏
+    function endGame() {
+        isRunning = false;
+        clearInterval(timerInterval);
+        const finalTime = timerDisplay.textContent;
+        setTimeout(() => {
+            alert(`恭喜完成！\n最终成绩：${finalTime}\n继续努力，你的注意力在飞速提升！`);
+        }, 100);
+    }
+
+    // 初始加载一次
+    startGame();
+
+</script>
+
+</body>
+</html>
