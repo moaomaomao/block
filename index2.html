@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
+    <title>逻辑旷工 - 舒尔特方块训练</title>
+    <style>
+        :root {
+            --primary: #3498db;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --bg: #f0f3f6;
+            /* 原始 60px * 1.05 = 63px */
+            --cell-size: 63px; 
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            width: 100%;
+            max-width: 500px;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        h1 { color: #2c3e50; margin: 10px 0; font-size: 2rem; }
+
+        /* 顶部信息栏 */
+        .info-panel {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-around;
+            font-weight: bold;
+        }
+
+        .info-item .label { font-size: 0.8rem; color: #7f8c8d; display: block; }
+        .info-item .value { font-size: 1.2rem; color: var(--primary); }
+
+        /* 游戏网格 - 核心适配逻辑 */
+        #board {
+            display: grid;
+            gap: 8px;
+            margin: 0 auto;
+            justify-content: center;
+            perspective: 1000px;
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background: white;
+            border: 2px solid #dcdde1;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #34495e;
+            cursor: pointer;
+            transition: all 0.1s;
+            user-select: none;
+        }
+
+        /* 移动端适配：如果屏幕太窄，缩小格子 */
+        @media (max-width: 400px) {
+            :root { --cell-size: 50px; }
+            .cell { font-size: 1.1rem; }
+        }
+
+        .cell:active { transform: scale(0.9); }
+        .cell.correct { background: var(--success); color: white; border-color: var(--success); }
+        .cell.wrong { animation: shake 0.3s; background: var(--danger); color: white; border-color: var(--danger); }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+        }
+
+        /* 模式控制 */
+        .mode-selector {
+            margin-bottom: 15px;
+            display: flex;
+            background: #ddd;
+            border-radius: 25px;
+            padding: 3px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 22px;
+            cursor: pointer;
+            background: transparent;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        .mode-btn.active { background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+
+        /* 操作按钮 */
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .start-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        select {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <h1>逻辑旷工</h1>
+
+    <div class="mode-selector">
+        <button class="mode-btn active" onclick="switchMode('challenge')">闯关模式</button>
+        <button class="mode-btn" onclick="switchMode('free')">自由模式</button>
+    </div>
+
+    <div class="info-panel">
+        <div class="info-item">
+            <span class="label">当前目标</span>
+            <span class="value" id="target-num">--</span>
+        </div>
+        <div class="info-item">
+            <span class="label">实时计时</span>
+            <span class="value" id="timer">0.00s</span>
+        </div>
+        <div id="level-info" class="info-item">
+            <span class="label">关卡目标</span>
+            <span class="value" id="limit-time">--</span>
+        </div>
+    </div>
+
+    <div id="board"></div>
+
+    <div class="controls">
+        <select id="free-size-select" class="hidden">
+            <option value="3">3 x 3 入门</option>
+            <option value="4">4 x 4 进阶</option>
+            <option value="5">5 x 5 标准</option>
+            <option value="6">6 x 6 困难</option>
+            <option value="7">7 x 7 大师</option>
+        </select>
+        <button class="start-btn" id="start-btn" onclick="initGame()">开始挑战</button>
+    </div>
+</div>
+
+<script>
+    // 关卡配置 
+    const LEVELS = [
+        { size: 3, limit: 10 },
+        { size: 4, limit: 15 },
+        { size: 5, limit: 20 },
+        { size: 6, limit: 33 },
+        { size: 7, limit: 45 }
+    ];
+
+    let currentMode = 'challenge';
+    let currentLevelIdx = 0;
+    let currentTarget = 1;
+    let timer = null;
+    let startTime = null;
+    let isPlaying = false;
+
+    // 切换模式
+    function switchMode(mode) {
+        currentMode = mode;
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.innerText.includes(mode === 'challenge' ? '闯关' : '自由')));
+        document.getElementById('free-size-select').classList.toggle('hidden', mode === 'challenge');
+        document.getElementById('level-info').classList.toggle('hidden', mode === 'free');
+        resetGame();
+    }
+
+    function resetGame() {
+        isPlaying = false;
+        clearInterval(timer);
+        document.getElementById('timer').textContent = "0.00s";
+        document.getElementById('target-num').textContent = "--";
+        document.getElementById('board').innerHTML = "";
+        document.getElementById('start-btn').innerText = currentMode === 'challenge' ? `开始第 ${currentLevelIdx + 1} 关` : "开始挑战";
+        if(currentMode === 'challenge') {
+            document.getElementById('limit-time').textContent = LEVELS[currentLevelIdx].limit + "s";
+        }
+    }
+
+    function initGame() {
+        let size;
+        if (currentMode === 'challenge') {
+            size = LEVELS[currentLevelIdx].size;
+        } else {
+            size = parseInt(document.getElementById('free-size-select').value);
+        }
+
+        const total = size * size;
+        const nums = Array.from({length: total}, (_, i) => i + 1);
+        shuffle(nums);
+
+        const board = document.getElementById('board');
+        
+        // 特殊布局适配：7x7 改为 6*8 + 1 
+        if (size === 7) {
+            board.style.gridTemplateColumns = "repeat(6, 1fr)";
+        } else {
+            board.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+        }
+
+        board.innerHTML = "";
+        nums.forEach(n => {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.textContent = n;
+            cell.onclick = () => handleInput(n, cell);
+            board.appendChild(cell);
+        });
+
+        // 状态初始化
+        currentTarget = 1;
+        isPlaying = true;
+        document.getElementById('target-num').textContent = currentTarget;
+        
+        // 只有点击开始后才触发计时 
+        clearInterval(timer);
+        startTime = Date.now();
+        timer = setInterval(() => {
+            const now = (Date.now() - startTime) / 1000;
+            document.getElementById('timer').textContent = now.toFixed(2) + "s";
+        }, 10);
+    }
+
+    function handleInput(n, el) {
+        if (!isPlaying) return;
+
+        if (n === currentTarget) {
+            el.classList.add('correct');
+            el.onclick = null;
+            
+            const max = currentMode === 'challenge' ? 
+                        LEVELS[currentLevelIdx].size**2 : 
+                        parseInt(document.getElementById('free-size-select').value)**2;
+
+            if (currentTarget === max) {
+                win();
+            } else {
+                currentTarget++;
+                document.getElementById('target-num').textContent = currentTarget;
+            }
+        } else {
+            el.classList.add('wrong');
+            setTimeout(() => el.classList.remove('wrong'), 300);
+        }
+    }
+
+    function win() {
+        isPlaying = false;
+        clearInterval(timer);
+        const finalTime = parseFloat(document.getElementById('timer').textContent);
+
+        if (currentMode === 'challenge') {
+            const limit = LEVELS[currentLevelIdx].limit;
+            if (finalTime <= limit) {
+                if (currentLevelIdx === LEVELS.length - 1) {
+                    alert(`【通关大满贯！】\n用时：${finalTime}s\n你已经登顶逻辑巅峰！`);
+                    currentLevelIdx = 0;
+                } else {
+                    alert(`【挑战成功】\n用时：${finalTime}s (限时${limit}s)\n准备好进入下一关了吗？`);
+                    currentLevelIdx++;
+                }
+            } else {
+                alert(`【挑战失败】\n用时：${finalTime}s\n超过了本关限制的 ${limit}s，再试一次吧！`);
+            }
+        } else {
+            alert(`【完成】\n最终成绩：${finalTime}s`);
+        }
+        resetGame();
+    }
+
+    function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+    }
+
+    // 初始化界面
+    resetGame();
+</script>
+
+</body>
+</html>
